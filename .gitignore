@@ -1,0 +1,41 @@
+# Logs
+logs
+
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OpenZeppelin SDK
+.openzeppelin/dev-*.json
+.openzeppelin/unknown-*.json
+.openzeppelin/.session
+.openzeppelin/.lock
+
+# Dependency directories
+node_modules/
+
+
+# project artifacts
+build/*
+
+abi/*
+
+# TypeScript types
+types/*
+
+# Optional npm cache directory
+.npm
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Environment
+.env
+
+# coverage/profiler report
+coverage
+coverage.json
+
+# MacOS junk
+.DS_Store
