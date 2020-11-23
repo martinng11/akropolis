@@ -12,37 +12,31 @@ import "../token/PoolToken.sol";
 import "./RewardDistributions.sol";
 
 contract SavingsCap is CapperRole {
+
     event UserCapEnabledChange(bool enabled);
-    event UserCapChanged(
-        address indexed protocol,
-        address indexed user,
-        uint256 newCap
-    );
+    event UserCapChanged(address indexed protocol, address indexed user, uint256 newCap);
     event DefaultUserCapChanged(address indexed protocol, uint256 newCap);
     event ProtocolCapEnabledChange(bool enabled);
     event ProtocolCapChanged(address indexed protocol, uint256 newCap);
     event VipUserEnabledChange(bool enabled);
-    event VipUserChanged(
-        address indexed protocol,
-        address indexed user,
-        bool isVip
-    );
+    event VipUserChanged(address indexed protocol, address indexed user, bool isVip);
 
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
     struct ProtocolCapInfo {
         mapping(address => uint256) userCap; //Limit of pool tokens which can be minted for a user during deposit
-        mapping(address => bool) isVipUser;
+        mapping(address=>bool) isVipUser;       
     }
 
     mapping(address => ProtocolCapInfo) protocolsCapInfo; //Mapping of protocol to data we need to calculate APY and do distributions
 
     bool public userCapEnabled;
     bool public protocolCapEnabled;
-    mapping(address => uint256) public defaultUserCap;
-    mapping(address => uint256) public protocolCap;
-    bool public vipUserEnabled; // Enable VIP user (overrides protocol cap)
+    mapping(address=>uint256) public defaultUserCap;
+    mapping(address=>uint256) public protocolCap;
+    bool public vipUserEnabled;                         // Enable VIP user (overrides protocol cap)
+
 
     function initialize(address _capper) public initializer {
         CapperRole.initialize(_capper);
@@ -71,19 +65,12 @@ contract SavingsCap is CapperRole {
         emit VipUserEnabledChange(_vipUserEnabled);
     }
 
-    function setVipUser(
-        address _protocol,
-        address user,
-        bool isVip
-    ) public onlyCapper {
+    function setVipUser(address _protocol, address user, bool isVip) public onlyCapper {
         protocolsCapInfo[_protocol].isVipUser[user] = isVip;
         emit VipUserChanged(_protocol, user, isVip);
     }
-
-    function setDefaultUserCap(address _protocol, uint256 cap)
-        public
-        onlyCapper
-    {
+    
+    function setDefaultUserCap(address _protocol, uint256 cap) public onlyCapper {
         defaultUserCap[_protocol] = cap;
         emit DefaultUserCapChanged(_protocol, cap);
     }
@@ -98,11 +85,7 @@ contract SavingsCap is CapperRole {
         emit ProtocolCapChanged(_protocol, cap);
     }
 
-    function getUserCapLeft(address _protocol, uint256 _balance)
-        public
-        view
-        returns (uint256)
-    {
+    function getUserCapLeft(address _protocol, uint256 _balance) view public returns(uint256) {
         uint256 cap;
         if (_balance < defaultUserCap[_protocol]) {
             cap = defaultUserCap[_protocol] - _balance;
@@ -110,21 +93,13 @@ contract SavingsCap is CapperRole {
         return cap;
     }
 
-    function isVipUser(address _protocol, address user)
-        public
-        view
-        returns (bool)
-    {
+    function isVipUser(address _protocol, address user) view public returns(bool){
         return protocolsCapInfo[_protocol].isVipUser[user];
     }
 
-    function isProtocolCapExceeded(
-        uint256 _poolSupply,
-        address _protocol,
-        address _user
-    ) public view returns (bool) {
+    function isProtocolCapExceeded(uint256 _poolSupply, address _protocol, address _user) view public returns(bool) {
         if (protocolCapEnabled) {
-            if (!(vipUserEnabled && isVipUser(_protocol, _user))) {
+            if ( !(vipUserEnabled && isVipUser(_protocol, _user)) ) {
                 if (_poolSupply > protocolCap[_protocol]) {
                     return true;
                 }
@@ -132,4 +107,5 @@ contract SavingsCap is CapperRole {
         }
         return false;
     }
+
 }

